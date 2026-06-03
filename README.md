@@ -2,12 +2,6 @@
 
 Android AAR library that wraps the [Tradeable Flutter SDK Module](https://github.com/deepakgrandhi/tradeable_flutter_sdk_module) for easy integration into native Android apps using Jetpack Compose.
 
-## ✨ New Simplified API
-
-The Android wrapper now features a **simplified API that matches the iOS implementation**! 
-
-For detailed usage guide and examples, see **[USAGE.md](USAGE.md)**.
-
 ### Quick Example
 
 ```kotlin
@@ -33,13 +27,6 @@ TradeableFlutterView(
     data = mapOf("text" to "Open Fullscreen")
 )
 ```
-
-### ✅ Bug Fixes in This Version
-
-1. **Card Flip Fixed**: Direct view no longer disappears on flip
-2. **Fullscreen Fixed**: No longer gets stuck, uses Compose Dialog
-3. **iOS Parity**: API now matches iOS wrapper for consistency
-
 ## 🔄 Automated Build Process
 
 This wrapper **automatically pulls and integrates** the Flutter SDK module from GitHub. The build script handles:
@@ -263,19 +250,6 @@ FLUTTER_SDK_BRANCH=develop \
 
 The output AAR will be in `./output/tradeable-android-wrapper.aar`
 
-### GitHub Actions
-
-The project includes a GitHub Actions workflow that:
-1. Pulls the Flutter SDK from GitHub
-2. Builds the Flutter module
-3. Creates the Android wrapper AAR
-4. Uploads the artifact
-
-Trigger a build:
-- Push to `main` or `develop`
-- Create a tag starting with `v` (e.g., `v1.0.0`)
-- Manual dispatch with custom Flutter branch
-
 ## Project Structure
 
 ```
@@ -315,12 +289,6 @@ Make sure you're calling `TradeableSDK.initialize()` in your Application's `onCr
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request
 
 ## Support
 
