@@ -91,3 +91,50 @@ fun TradeableLearnSheet(
         modifier = modifier.fillMaxWidth()
     )
 }
+
+@Composable
+fun TradeableNativeSideDrawer(
+    pageId: Int,
+    modifier: Modifier = Modifier,
+    width: Dp = 320.dp,
+    height: Dp = 600.dp,
+    onClose: (() -> Unit)? = null
+) {
+    TradeableFlutterView(
+        mode = DisplayMode.SIDE_DRAWER,
+        width = width,
+        height = height,
+        data = mapOf("text" to "Native Side Drawer"),
+        pageId = pageId,
+        onCloseSideDrawer = onClose,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun TradeableTopicFullscreenContent(
+    topicId: Int,
+    modifier: Modifier = Modifier,
+    onClose: (() -> Unit)? = null
+) {
+    TradeableFlutterView(
+        mode = DisplayMode.FULLSCREEN_CONTENT,
+        data = mapOf("text" to "Topic Detail"),
+        topicId = topicId,
+        onCloseFullscreen = onClose,
+        modifier = modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+fun TradeableDashboardFullscreenContent(
+    modifier: Modifier = Modifier,
+    onClose: (() -> Unit)? = null
+) {
+    TradeableFlutterView(
+        mode = DisplayMode.DASHBOARD_CONTENT,
+        data = mapOf("text" to "Learn Dashboard"),
+        onCloseFullscreen = onClose,
+        modifier = modifier.fillMaxWidth()
+    )
+}
