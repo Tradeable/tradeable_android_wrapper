@@ -8,25 +8,31 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tradeable.sdk.config.TradeableCallbackEvent
 
-/**
- * Tradeable Dashboard widget that can be embedded in your Compose UI.
- * 
- * This displays the main Tradeable Learn dashboard/home widget.
- * 
- * ```kotlin
- * TradeableDashboard(
- *     modifier = Modifier.fillMaxWidth(),
- *     onCallback = { event ->
- *         // Handle dashboard interactions
- *     }
- * )
- * ```
- * 
- * @param modifier Compose modifier
- * @param height Height of the dashboard widget
- * @param dateThreshold Number of days to filter courses (default: all)
- * @param onCallback Callback for dashboard interactions
- */
+@Composable
+fun TradeableFlutterWidget(
+    mode: DisplayMode = DisplayMode.DIRECT,
+    width: Dp = 320.dp,
+    height: Dp = 220.dp,
+    data: Map<String, Any> = emptyMap(),
+    topicId: Int? = null,
+    pageId: Int? = null,
+    onCloseSideDrawer: (() -> Unit)? = null,
+    onCloseFullscreen: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    TradeableFlutterView(
+        mode = mode,
+        width = width,
+        height = height,
+        data = data,
+        topicId = topicId,
+        pageId = pageId,
+        onCloseSideDrawer = onCloseSideDrawer,
+        onCloseFullscreen = onCloseFullscreen,
+        modifier = modifier
+    )
+}
+
 @Composable
 fun TradeableDashboard(
     modifier: Modifier = Modifier,
