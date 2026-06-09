@@ -53,10 +53,61 @@ FLUTTER_SDK_BRANCH=develop ./build.sh
 ## Features
 
 - 🎯 **Simplified API matching iOS** - Easy cross-platform development
-- 📱 Three display modes: Direct, Card Flip, Fullscreen
+- 📱 Six display modes: Direct, Card Flip, Fullscreen launcher, Side Drawer, Fullscreen Content, Dashboard Content
 - 🔄 Bidirectional communication between Android and Flutter
 - 🐛 Bug fixes for card flip and fullscreen modes
 - 🏗️ Minimum SDK 26 (Android 8.0)
+
+## New Views Added
+
+The wrapper now supports the following display modes through `TradeableFlutterView`:
+
+- `DisplayMode.DIRECT`
+- `DisplayMode.CARD_FLIP`
+- `DisplayMode.FULLSCREEN` (button launcher)
+- `DisplayMode.SIDE_DRAWER` (Flutter content hosted in a native side drawer)
+- `DisplayMode.FULLSCREEN_CONTENT` (Flutter content hosted as fullscreen content)
+- `DisplayMode.DASHBOARD_CONTENT` (dashboard content hosted as fullscreen content)
+
+Example:
+
+```kotlin
+TradeableFlutterView(
+        mode = DisplayMode.SIDE_DRAWER,
+        pageId = 6,
+        data = mapOf("text" to "Open Side Drawer"),
+        onCloseSideDrawer = { /* close native drawer */ }
+)
+```
+
+## Method Channels for Integration Apps
+
+Channel names:
+
+- `embedded_flutter`
+- `embedded_flutter/auth`
+- `embedded_flutter/navigation`
+
+Host -> Flutter methods:
+
+- On `embedded_flutter`
+    - `setData` with payload keys: `mode`, `text`, `width`, `height`, `topicId`, `pageId`
+- On `embedded_flutter/auth`
+    - `initializeTFS` with auth payload: `baseUrl`, `authToken`, `portalToken`, `appId`, `clientId`, `publicKey`
+- On `embedded_flutter/navigation`
+    - `openTradeableSideDrawer` (payload can include `pageId`)
+    - `navigateTo`, `replaceRoute`, `popToRoot`, `receiveData`
+
+Flutter -> Host methods:
+
+- On `embedded_flutter`
+    - `closeCard`
+    - `closeFullscreen`
+    - `closeSideDrawer`
+- On `embedded_flutter/navigation`
+    - `sendData` with actions like:
+        - `{ "action": "openTopic", "topicId": 123, "title": "..." }`
+        - `{ "action": "openDashboard", "title": "Learn Dashboard" }`
 
 ## Installation
 
@@ -194,11 +245,14 @@ Button(onClick = {
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
+| `mode` | DisplayMode | Display mode to render |
 | `height` | Dp | View height |
 | `width` | Dp | View width |
-| `type` | String | Widget type (e.g., "course_card") |
-| `parameters` | Map<String, String> | Parameters for the widget |
-| `onCallback` | (TradeableCallbackEvent) -> Unit | Callback handler |
+| `data` | Map<String, Any> | View payload (for example `text`) |
+| `topicId` | Int? | Topic id for fullscreen/topic content |
+| `pageId` | Int? | Page id for side drawer content |
+| `onCloseSideDrawer` | (() -> Unit)? | Native close callback for side drawer |
+| `onCloseFullscreen` | (() -> Unit)? | Native close callback for fullscreen content |
 | `modifier` | Modifier | Compose modifier |
 
 ### Pre-built Widgets

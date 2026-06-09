@@ -61,7 +61,10 @@ import com.tradeable.sdk.core.TradeableSDK
 enum class DisplayMode {
     DIRECT,      // Direct display of Flutter view
     CARD_FLIP,   // Card with flip animation
-    FULLSCREEN   // Fullscreen dialog
+    FULLSCREEN,  // Fullscreen button launcher
+    SIDE_DRAWER,
+    FULLSCREEN_CONTENT,
+    DASHBOARD_CONTENT
 }
 
 /**
@@ -74,6 +77,9 @@ fun TradeableFlutterView(
     height: Dp = 220.dp,
     data: Map<String, Any> = emptyMap(),
     topicId: Int? = null,
+    pageId: Int? = null,
+    onCloseSideDrawer: (() -> Unit)? = null,
+    onCloseFullscreen: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     when (mode) {
@@ -82,6 +88,7 @@ fun TradeableFlutterView(
             height = height,
             data = data,
             topicId = topicId,
+            pageId = pageId,
             modifier = modifier
         )
         DisplayMode.CARD_FLIP -> CardFlipView(
@@ -89,6 +96,7 @@ fun TradeableFlutterView(
             height = height,
             data = data,
             topicId = topicId,
+            pageId = pageId,
             modifier = modifier
         )
         DisplayMode.FULLSCREEN -> FullscreenButtonView(
@@ -96,6 +104,29 @@ fun TradeableFlutterView(
             height = height,
             data = data,
             topicId = topicId,
+            modifier = modifier
+        )
+        DisplayMode.SIDE_DRAWER -> SideDrawerContentView(
+            width = width,
+            height = height,
+            data = data,
+            pageId = pageId,
+            onCloseSideDrawer = onCloseSideDrawer,
+            modifier = modifier
+        )
+        DisplayMode.FULLSCREEN_CONTENT -> FullscreenContentView(
+            width = width,
+            height = height,
+            data = data,
+            topicId = topicId,
+            onCloseFullscreen = onCloseFullscreen,
+            modifier = modifier
+        )
+        DisplayMode.DASHBOARD_CONTENT -> DashboardContentView(
+            width = width,
+            height = height,
+            data = data,
+            onCloseFullscreen = onCloseFullscreen,
             modifier = modifier
         )
     }
@@ -108,10 +139,18 @@ private fun DirectView(
     height: Dp,
     data: Map<String, Any>,
     topicId: Int?,
+    pageId: Int?,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val preparedData = prepareData(mode = "direct", width = width, height = height, data = data, topicId = topicId)
+    val preparedData = prepareData(
+        mode = "direct",
+        width = width,
+        height = height,
+        data = data,
+        topicId = topicId,
+        pageId = pageId
+    )
     
     // Send initial state when view is created
     LaunchedEffect(Unit) {
@@ -121,7 +160,8 @@ private fun DirectView(
             text = preparedData["text"] as? String ?: "",
             width = preparedData["width"] as Double,
             height = preparedData["height"] as Double,
-            topicId = preparedData["topicId"] as? Int ?: 0
+                topicId = preparedData["topicId"] as? Int ?: 0,
+                pageId = preparedData["pageId"] as? Int ?: 0
         )
     }
     
@@ -142,11 +182,19 @@ private fun CardFlipView(
     height: Dp,
     data: Map<String, Any>,
     topicId: Int?,
+    pageId: Int?,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var isFlipped by remember { mutableStateOf(false) }
-    val preparedData = prepareData(mode = "card", width = width, height = height, data = data, topicId = topicId)
+    val preparedData = prepareData(
+        mode = "card",
+        width = width,
+        height = height,
+        data = data,
+        topicId = topicId,
+        pageId = pageId
+    )
     
     // Handle back button when flipped
     BackHandler(enabled = isFlipped) {
@@ -264,7 +312,125 @@ private fun FullscreenButtonView(
             contentDescription = "Open Fullscreen",
             modifier = Modifier.padding(end = 8.dp)
         )
-        Text("Open Flutter Fullscreen")
+        Text(data["text"] as? String ?: "Open Flutter Fullscreen")
+    }
+}
+
+@Composable
+private fun SideDrawerContentView(
+    width: Dp,
+    height: Dp,
+    data: Map<String, Any>,
+    pageId: Int?,
+    onCloseSideDrawer: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val preparedData = prepareData(
+        mode = "nativeSideDrawer",
+        width = width,
+        height = height,
+        data = data,
+        pageId = pageId
+    )
+
+    FlutterContainer(
+        initialData = preparedData,
+        onCloseSideDrawer = onCloseSideDrawer,
+        modifier = modifier
+            .width(width)
+            .height(height)
+            .background(MaterialTheme.colorScheme.background)
+    )
+
+    LaunchedEffect(Unit) {
+        val bridge = FlutterBridge.getInstance(context)
+        bridge.sendViewState(
+            mode = preparedData["mode"] as String,
+            text = preparedData["text"] as? String ?: "",
+            width = preparedData["width"] as Double,
+            height = preparedData["height"] as Double,
+            topicId = preparedData["topicId"] as? Int ?: 0,
+            pageId = preparedData["pageId"] as? Int ?: 0
+        )
+    }
+}
+
+@Composable
+private fun FullscreenContentView(
+    width: Dp,
+    height: Dp,
+    data: Map<String, Any>,
+    topicId: Int?,
+    onCloseFullscreen: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val preparedData = prepareData(
+        mode = "fullscreen",
+        width = width,
+        height = height,
+        data = data,
+        topicId = topicId
+    )
+
+    FlutterContainer(
+        initialData = preparedData,
+        onClose = onCloseFullscreen,
+        modifier = modifier
+            .width(width)
+            .height(height)
+            .background(MaterialTheme.colorScheme.background)
+    )
+
+    LaunchedEffect(Unit) {
+        val bridge = FlutterBridge.getInstance(context)
+        bridge.sendViewState(
+            mode = preparedData["mode"] as String,
+            text = preparedData["text"] as? String ?: "",
+            width = preparedData["width"] as Double,
+            height = preparedData["height"] as Double,
+            topicId = preparedData["topicId"] as? Int ?: 0,
+            pageId = preparedData["pageId"] as? Int ?: 0
+        )
+    }
+}
+
+@Composable
+private fun DashboardContentView(
+    width: Dp,
+    height: Dp,
+    data: Map<String, Any>,
+    onCloseFullscreen: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val preparedData = prepareData(
+        mode = "dashboard",
+        width = width,
+        height = height,
+        data = data
+    )
+
+    FlutterContainer(
+        initialData = preparedData,
+        onClose = onCloseFullscreen,
+        modifier = modifier
+            .width(width)
+            .height(height)
+            .background(MaterialTheme.colorScheme.background)
+    )
+
+    LaunchedEffect(Unit) {
+        val bridge = FlutterBridge.getInstance(context)
+        bridge.sendViewState(
+            mode = preparedData["mode"] as String,
+            text = preparedData["text"] as? String ?: "",
+            width = preparedData["width"] as Double,
+            height = preparedData["height"] as Double,
+            topicId = preparedData["topicId"] as? Int ?: 0,
+            pageId = preparedData["pageId"] as? Int ?: 0
+        )
     }
 }
 
@@ -274,13 +440,15 @@ private fun prepareData(
     width: Dp,
     height: Dp,
     data: Map<String, Any>,
-    topicId: Int?
+    topicId: Int? = null,
+    pageId: Int? = null
 ): Map<String, Any> {
     val finalData = data.toMutableMap()
     finalData["width"] = width.value.toDouble()
     finalData["height"] = height.value.toDouble()
     finalData["mode"] = mode
     topicId?.let { finalData["topicId"] = it }
+    pageId?.let { finalData["pageId"] = it }
     return finalData
 }
 
@@ -289,6 +457,7 @@ private fun prepareData(
 private fun FlutterContainer(
     initialData: Map<String, Any>,
     onClose: (() -> Unit)? = null,
+    onCloseSideDrawer: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -304,7 +473,8 @@ private fun FlutterContainer(
                 text = initialData["text"] as? String ?: "",
                 width = initialData["width"] as? Double ?: 320.0,
                 height = initialData["height"] as? Double ?: 220.0,
-                topicId = initialData["topicId"] as? Int ?: 0
+                topicId = initialData["topicId"] as? Int ?: 0,
+                pageId = initialData["pageId"] as? Int ?: 0
             )
             isReady = true
         }
@@ -314,9 +484,11 @@ private fun FlutterContainer(
     DisposableEffect(Unit) {
         val bridge = FlutterBridge.getInstance(context)
         bridge.setupCloseHandler(onClose)
+        bridge.setupSideDrawerCloseHandler(onCloseSideDrawer)
         
         onDispose {
             bridge.setupCloseHandler(null)
+            bridge.setupSideDrawerCloseHandler(null)
             flutterView?.let { view ->
                 val mode = initialData["mode"] as? String
                 if (mode == "card") {

@@ -37,6 +37,8 @@ class FlutterBridge private constructor(private val context: Context) {
     // Track views but don't auto-detach them
     private val flutterViews = mutableListOf<FlutterView>()
     private var closeHandler: (() -> Unit)? = null
+    private var sideDrawerCloseHandler: (() -> Unit)? = null
+    private var dataHandler: ((Map<String, Any>) -> Unit)? = null
     
     val authHandler = AuthHandler()
     val navigationHandler = NavigationHandler()
@@ -68,6 +70,24 @@ class FlutterBridge private constructor(private val context: Context) {
                     "closeCard", "closeFullscreen" -> {
                         Log.d(TAG, "Flutter requested close: ${call.method}")
                         closeHandler?.invoke()
+                        result.success(null)
+                    }
+                    "closeSideDrawer" -> {
+                        Log.d(TAG, "Flutter requested side drawer close")
+                        sideDrawerCloseHandler?.invoke()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+            navChannel?.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "sendData" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = (call.arguments as? Map<String, Any>) ?: emptyMap()
+                        Log.d(TAG, "Received navigation data from Flutter: $payload")
+                        dataHandler?.invoke(payload)
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -103,6 +123,16 @@ class FlutterBridge private constructor(private val context: Context) {
     fun setupCloseHandler(handler: (() -> Unit)?) {
         closeHandler = handler
         Log.d(TAG, "Close handler ${if (handler != null) "registered" else "cleared"}")
+    }
+
+    fun setupSideDrawerCloseHandler(handler: (() -> Unit)?) {
+        sideDrawerCloseHandler = handler
+        Log.d(TAG, "Side drawer close handler ${if (handler != null) "registered" else "cleared"}")
+    }
+
+    fun setupDataHandler(handler: ((Map<String, Any>) -> Unit)?) {
+        dataHandler = handler
+        Log.d(TAG, "Data handler ${if (handler != null) "registered" else "cleared"}")
     }
     
     /**
@@ -149,13 +179,21 @@ class FlutterBridge private constructor(private val context: Context) {
         Log.d(TAG, "Flutter engine started")
     }
     
-    fun sendViewState(mode: String, text: String = "", width: Double = 300.0, height: Double = 200.0, topicId: Int = 0) {
+    fun sendViewState(
+        mode: String,
+        text: String = "",
+        width: Double = 300.0,
+        height: Double = 200.0,
+        topicId: Int = 0,
+        pageId: Int = 0
+    ) {
         val data = mapOf(
             "mode" to mode,
             "text" to text,
             "width" to width,
             "height" to height,
-            "topicId" to topicId
+            "topicId" to topicId,
+            "pageId" to pageId
         )
         
         baseChannel?.invokeMethod("setData", data)

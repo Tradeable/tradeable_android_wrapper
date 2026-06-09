@@ -8,25 +8,31 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tradeable.sdk.config.TradeableCallbackEvent
 
-/**
- * Tradeable Dashboard widget that can be embedded in your Compose UI.
- * 
- * This displays the main Tradeable Learn dashboard/home widget.
- * 
- * ```kotlin
- * TradeableDashboard(
- *     modifier = Modifier.fillMaxWidth(),
- *     onCallback = { event ->
- *         // Handle dashboard interactions
- *     }
- * )
- * ```
- * 
- * @param modifier Compose modifier
- * @param height Height of the dashboard widget
- * @param dateThreshold Number of days to filter courses (default: all)
- * @param onCallback Callback for dashboard interactions
- */
+@Composable
+fun TradeableFlutterWidget(
+    mode: DisplayMode = DisplayMode.DIRECT,
+    width: Dp = 320.dp,
+    height: Dp = 220.dp,
+    data: Map<String, Any> = emptyMap(),
+    topicId: Int? = null,
+    pageId: Int? = null,
+    onCloseSideDrawer: (() -> Unit)? = null,
+    onCloseFullscreen: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    TradeableFlutterView(
+        mode = mode,
+        width = width,
+        height = height,
+        data = data,
+        topicId = topicId,
+        pageId = pageId,
+        onCloseSideDrawer = onCloseSideDrawer,
+        onCloseFullscreen = onCloseFullscreen,
+        modifier = modifier
+    )
+}
+
 @Composable
 fun TradeableDashboard(
     modifier: Modifier = Modifier,
@@ -88,6 +94,53 @@ fun TradeableLearnSheet(
         height = height,
         width = 400.dp,
         data = data,
+        modifier = modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+fun TradeableNativeSideDrawer(
+    pageId: Int,
+    modifier: Modifier = Modifier,
+    width: Dp = 320.dp,
+    height: Dp = 600.dp,
+    onClose: (() -> Unit)? = null
+) {
+    TradeableFlutterView(
+        mode = DisplayMode.SIDE_DRAWER,
+        width = width,
+        height = height,
+        data = mapOf("text" to "Native Side Drawer"),
+        pageId = pageId,
+        onCloseSideDrawer = onClose,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun TradeableTopicFullscreenContent(
+    topicId: Int,
+    modifier: Modifier = Modifier,
+    onClose: (() -> Unit)? = null
+) {
+    TradeableFlutterView(
+        mode = DisplayMode.FULLSCREEN_CONTENT,
+        data = mapOf("text" to "Topic Detail"),
+        topicId = topicId,
+        onCloseFullscreen = onClose,
+        modifier = modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+fun TradeableDashboardFullscreenContent(
+    modifier: Modifier = Modifier,
+    onClose: (() -> Unit)? = null
+) {
+    TradeableFlutterView(
+        mode = DisplayMode.DASHBOARD_CONTENT,
+        data = mapOf("text" to "Learn Dashboard"),
+        onCloseFullscreen = onClose,
         modifier = modifier.fillMaxWidth()
     )
 }
