@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -49,11 +50,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.tradeable.sdk.android.wrapper.FlutterBridge
 import android.graphics.Color as AndroidColor
 import android.view.ViewGroup
 import com.tradeable.sdk.config.TradeableCallbackEvent
 import com.tradeable.sdk.core.TradeableSDK
+import java.util.UUID
 
 /**
  * Display modes for TradeableFlutterView matching iOS API
@@ -64,7 +68,10 @@ enum class DisplayMode {
     FULLSCREEN,  // Fullscreen button launcher
     SIDE_DRAWER,
     FULLSCREEN_CONTENT,
-    DASHBOARD_CONTENT
+    DASHBOARD_CONTENT,
+    COURSE_DETAILS_CONTENT,
+    USER_PROGRESS,
+    USER_PROGRESS_CONTENT
 }
 
 /**
@@ -78,37 +85,46 @@ fun TradeableFlutterView(
     data: Map<String, Any> = emptyMap(),
     topicId: Int? = null,
     pageId: Int? = null,
+    courseId: Int? = null,
     onCloseSideDrawer: (() -> Unit)? = null,
     onCloseFullscreen: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val resolvedHeight = if (mode == DisplayMode.USER_PROGRESS && width == 320.dp && height == 220.dp) {
+        360.dp
+    } else {
+        height
+    }
+
     when (mode) {
         DisplayMode.DIRECT -> DirectView(
             width = width,
-            height = height,
+            height = resolvedHeight,
             data = data,
             topicId = topicId,
             pageId = pageId,
+            courseId = courseId,
             modifier = modifier
         )
         DisplayMode.CARD_FLIP -> CardFlipView(
             width = width,
-            height = height,
+            height = resolvedHeight,
             data = data,
             topicId = topicId,
             pageId = pageId,
+            courseId = courseId,
             modifier = modifier
         )
         DisplayMode.FULLSCREEN -> FullscreenButtonView(
             width = width,
-            height = height,
+            height = resolvedHeight,
             data = data,
             topicId = topicId,
             modifier = modifier
         )
         DisplayMode.SIDE_DRAWER -> SideDrawerContentView(
             width = width,
-            height = height,
+            height = resolvedHeight,
             data = data,
             pageId = pageId,
             onCloseSideDrawer = onCloseSideDrawer,
@@ -116,7 +132,7 @@ fun TradeableFlutterView(
         )
         DisplayMode.FULLSCREEN_CONTENT -> FullscreenContentView(
             width = width,
-            height = height,
+            height = resolvedHeight,
             data = data,
             topicId = topicId,
             onCloseFullscreen = onCloseFullscreen,
@@ -124,7 +140,28 @@ fun TradeableFlutterView(
         )
         DisplayMode.DASHBOARD_CONTENT -> DashboardContentView(
             width = width,
-            height = height,
+            height = resolvedHeight,
+            data = data,
+            onCloseFullscreen = onCloseFullscreen,
+            modifier = modifier
+        )
+        DisplayMode.COURSE_DETAILS_CONTENT -> CourseDetailsContentView(
+            width = width,
+            height = resolvedHeight,
+            data = data,
+            courseId = courseId,
+            onCloseFullscreen = onCloseFullscreen,
+            modifier = modifier
+        )
+        DisplayMode.USER_PROGRESS -> UserProgressView(
+            width = width,
+            height = resolvedHeight,
+            data = data,
+            modifier = modifier
+        )
+        DisplayMode.USER_PROGRESS_CONTENT -> UserProgressContentView(
+            width = width,
+            height = resolvedHeight,
             data = data,
             onCloseFullscreen = onCloseFullscreen,
             modifier = modifier
@@ -140,6 +177,7 @@ private fun DirectView(
     data: Map<String, Any>,
     topicId: Int?,
     pageId: Int?,
+    courseId: Int?,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -149,7 +187,8 @@ private fun DirectView(
         height = height,
         data = data,
         topicId = topicId,
-        pageId = pageId
+        pageId = pageId,
+        courseId = courseId
     )
     
     // Send initial state when view is created
@@ -161,7 +200,8 @@ private fun DirectView(
             width = preparedData["width"] as Double,
             height = preparedData["height"] as Double,
                 topicId = preparedData["topicId"] as? Int ?: 0,
-                pageId = preparedData["pageId"] as? Int ?: 0
+                pageId = preparedData["pageId"] as? Int ?: 0,
+                courseId = preparedData["courseId"] as? Int ?: 0
         )
     }
     
@@ -183,6 +223,7 @@ private fun CardFlipView(
     data: Map<String, Any>,
     topicId: Int?,
     pageId: Int?,
+    courseId: Int?,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -193,7 +234,8 @@ private fun CardFlipView(
         height = height,
         data = data,
         topicId = topicId,
-        pageId = pageId
+        pageId = pageId,
+        courseId = courseId
     )
     
     // Handle back button when flipped
@@ -351,7 +393,8 @@ private fun SideDrawerContentView(
             width = preparedData["width"] as Double,
             height = preparedData["height"] as Double,
             topicId = preparedData["topicId"] as? Int ?: 0,
-            pageId = preparedData["pageId"] as? Int ?: 0
+            pageId = preparedData["pageId"] as? Int ?: 0,
+            courseId = preparedData["courseId"] as? Int ?: 0
         )
     }
 }
@@ -391,7 +434,8 @@ private fun FullscreenContentView(
             width = preparedData["width"] as Double,
             height = preparedData["height"] as Double,
             topicId = preparedData["topicId"] as? Int ?: 0,
-            pageId = preparedData["pageId"] as? Int ?: 0
+            pageId = preparedData["pageId"] as? Int ?: 0,
+            courseId = preparedData["courseId"] as? Int ?: 0
         )
     }
 }
@@ -429,7 +473,125 @@ private fun DashboardContentView(
             width = preparedData["width"] as Double,
             height = preparedData["height"] as Double,
             topicId = preparedData["topicId"] as? Int ?: 0,
-            pageId = preparedData["pageId"] as? Int ?: 0
+            pageId = preparedData["pageId"] as? Int ?: 0,
+            courseId = preparedData["courseId"] as? Int ?: 0
+        )
+    }
+}
+
+@Composable
+private fun CourseDetailsContentView(
+    width: Dp,
+    height: Dp,
+    data: Map<String, Any>,
+    courseId: Int?,
+    onCloseFullscreen: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val preparedData = prepareData(
+        mode = "courseDetailsScreen",
+        width = width,
+        height = height,
+        data = data,
+        courseId = courseId
+    )
+
+    FlutterContainer(
+        initialData = preparedData,
+        onClose = onCloseFullscreen,
+        modifier = modifier
+            .width(width)
+            .height(height)
+            .background(MaterialTheme.colorScheme.background)
+    )
+
+    LaunchedEffect(Unit) {
+        val bridge = FlutterBridge.getInstance(context)
+        bridge.sendViewState(
+            mode = preparedData["mode"] as String,
+            text = preparedData["text"] as? String ?: "",
+            width = preparedData["width"] as Double,
+            height = preparedData["height"] as Double,
+            topicId = preparedData["topicId"] as? Int ?: 0,
+            pageId = preparedData["pageId"] as? Int ?: 0,
+            courseId = preparedData["courseId"] as? Int ?: 0
+        )
+    }
+}
+
+@Composable
+private fun UserProgressView(
+    width: Dp,
+    height: Dp,
+    data: Map<String, Any>,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val preparedData = prepareData(
+        mode = "userProgress",
+        width = width,
+        height = height,
+        data = data
+    )
+
+    FlutterContainer(
+        initialData = preparedData,
+        modifier = modifier
+            .width(width)
+            .height(height)
+            .background(MaterialTheme.colorScheme.background)
+    )
+
+    LaunchedEffect(Unit) {
+        val bridge = FlutterBridge.getInstance(context)
+        bridge.sendViewState(
+            mode = preparedData["mode"] as String,
+            text = preparedData["text"] as? String ?: "",
+            width = preparedData["width"] as Double,
+            height = preparedData["height"] as Double,
+            topicId = preparedData["topicId"] as? Int ?: 0,
+            pageId = preparedData["pageId"] as? Int ?: 0,
+            courseId = preparedData["courseId"] as? Int ?: 0
+        )
+    }
+}
+
+@Composable
+private fun UserProgressContentView(
+    width: Dp,
+    height: Dp,
+    data: Map<String, Any>,
+    onCloseFullscreen: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val preparedData = prepareData(
+        mode = "userProgressScreen",
+        width = width,
+        height = height,
+        data = data
+    )
+
+    FlutterContainer(
+        initialData = preparedData,
+        onClose = onCloseFullscreen,
+        modifier = modifier
+            .width(width)
+            .height(height)
+            .background(MaterialTheme.colorScheme.background)
+    )
+
+    LaunchedEffect(Unit) {
+        val bridge = FlutterBridge.getInstance(context)
+        bridge.sendViewState(
+            mode = preparedData["mode"] as String,
+            text = preparedData["text"] as? String ?: "",
+            width = preparedData["width"] as Double,
+            height = preparedData["height"] as Double,
+            topicId = preparedData["topicId"] as? Int ?: 0,
+            pageId = preparedData["pageId"] as? Int ?: 0,
+            courseId = preparedData["courseId"] as? Int ?: 0
         )
     }
 }
@@ -441,7 +603,8 @@ private fun prepareData(
     height: Dp,
     data: Map<String, Any>,
     topicId: Int? = null,
-    pageId: Int? = null
+    pageId: Int? = null,
+    courseId: Int? = null
 ): Map<String, Any> {
     val finalData = data.toMutableMap()
     finalData["width"] = width.value.toDouble()
@@ -449,6 +612,7 @@ private fun prepareData(
     finalData["mode"] = mode
     topicId?.let { finalData["topicId"] = it }
     pageId?.let { finalData["pageId"] = it }
+    courseId?.let { finalData["courseId"] = it }
     return finalData
 }
 
@@ -461,6 +625,8 @@ private fun FlutterContainer(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val ownerKey = remember { "embedded:${UUID.randomUUID()}" }
     var flutterView by remember { mutableStateOf<io.flutter.embedding.android.FlutterView?>(null) }
     var isReady by remember { mutableStateOf(false) }
     
@@ -474,26 +640,46 @@ private fun FlutterContainer(
                 width = initialData["width"] as? Double ?: 320.0,
                 height = initialData["height"] as? Double ?: 220.0,
                 topicId = initialData["topicId"] as? Int ?: 0,
-                pageId = initialData["pageId"] as? Int ?: 0
+                pageId = initialData["pageId"] as? Int ?: 0,
+                courseId = initialData["courseId"] as? Int ?: 0
             )
             isReady = true
         }
     }
     
     // Setup close handler and cleanup
-    DisposableEffect(Unit) {
+    DisposableEffect(lifecycleOwner, ownerKey, onClose, onCloseSideDrawer) {
         val bridge = FlutterBridge.getInstance(context)
-        bridge.setupCloseHandler(onClose)
-        bridge.setupSideDrawerCloseHandler(onCloseSideDrawer)
+        if (onClose != null) {
+            bridge.registerCloseHandler(ownerKey, onClose)
+        }
+        if (onCloseSideDrawer != null) {
+            bridge.registerSideDrawerCloseHandler(ownerKey, onCloseSideDrawer)
+        }
+
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (onClose != null || onCloseSideDrawer != null) {
+                    bridge.activateOwner(ownerKey)
+                }
+                bridge.sendViewState(
+                    mode = initialData["mode"] as? String ?: "direct",
+                    text = initialData["text"] as? String ?: "",
+                    width = initialData["width"] as? Double ?: 320.0,
+                    height = initialData["height"] as? Double ?: 220.0,
+                    topicId = initialData["topicId"] as? Int ?: 0,
+                    pageId = initialData["pageId"] as? Int ?: 0,
+                    courseId = initialData["courseId"] as? Int ?: 0
+                )
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         
         onDispose {
-            bridge.setupCloseHandler(null)
-            bridge.setupSideDrawerCloseHandler(null)
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            bridge.clearOwnerHandlers(ownerKey)
             flutterView?.let { view ->
-                val mode = initialData["mode"] as? String
-                if (mode == "card") {
-                    bridge.detachView(view)
-                }
+                bridge.detachView(view)
             }
             flutterView = null
             isReady = false

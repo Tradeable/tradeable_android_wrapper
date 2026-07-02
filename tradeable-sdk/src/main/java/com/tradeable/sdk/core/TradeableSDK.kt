@@ -122,11 +122,25 @@ object TradeableSDK {
             log("SDK not initialized. Call initialize() first.", error = true)
             return
         }
+
+        val route = params.route.lowercase()
+        val mode = when {
+            route.contains("dashboard") -> "dashboard"
+            route.contains("userprogress") || route.contains("user_progress") -> "userProgressScreen"
+            route.contains("course") && route.contains("details") -> "courseDetailsScreen"
+            else -> "fullscreen"
+        }
+
+        val topicId = params.parameters["topicId"]?.toIntOrNull() ?: 0
+        val courseId = params.parameters["courseId"]?.toIntOrNull() ?: 0
+        val pageId = params.parameters["pageId"]?.toIntOrNull() ?: 0
         
         val intent = Intent(activity, TradeableFlutterActivity::class.java).apply {
-            putExtra("mode", "fullscreen")
+            putExtra("mode", mode)
             putExtra("text", params.title ?: "Fullscreen")
-            putExtra("topicId", params.parameters["topicId"]?.toIntOrNull() ?: 0)
+            putExtra("topicId", topicId)
+            putExtra("courseId", courseId)
+            putExtra("pageId", pageId)
         }
         activity.startActivity(intent)
     }
@@ -136,6 +150,21 @@ object TradeableSDK {
      */
     fun openDashboard(activity: Activity) {
         openFullPage(activity, TradeablePageParams(route = "/dashboard"))
+    }
+
+    fun openUserProgress(activity: Activity, title: String = "My Activity") {
+        openFullPage(activity, TradeablePageParams(route = "/userProgress", title = title))
+    }
+
+    fun openCourseDetails(activity: Activity, courseId: Int, title: String = "Course Details") {
+        openFullPage(
+            activity,
+            TradeablePageParams(
+                route = "/course/details",
+                parameters = mapOf("courseId" to courseId.toString()),
+                title = title
+            )
+        )
     }
     
     /**

@@ -38,7 +38,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
 import com.tradeable.sdk.android.wrapper.FlutterBridge
-import androidx.activity.compose.BackHandler
+import com.tradeable.sdk.android.wrapper.FlutterBridge.ViewScope
+import java.util.UUID
 
 /**
  * Activity that displays a full-page Flutter view.
@@ -80,6 +81,12 @@ class TradeableFlutterActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        Log.d(TAG, "onNewIntent - updated fullscreen payload")
+    }
     
     override fun onDestroy() {
         Log.d(TAG, "onDestroy - cleaning up Flutter view")
@@ -88,8 +95,6 @@ class TradeableFlutterActivity : ComponentActivity() {
                 val bridge = FlutterBridge.getInstance(this)
                 bridge.detachView(view)
                 flutterView = null
-                // Stop engine to ensure next launch is fresh (clears stacked Flutter state)
-                bridge.stopEngine()
             } catch (e: Exception) {
                 Log.e(TAG, "Error detaching Flutter view", e)
             }
@@ -133,6 +138,7 @@ private fun TradeableFullPageContent(
     onViewCreated: (io.flutter.embedding.android.FlutterView) -> Unit
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
     val lifecycleOwner = LocalLifecycleOwner.current
     var initState by remember { mutableStateOf<InitState>(InitState.Initializing) }
     var viewReady by remember { mutableStateOf(false) }
@@ -154,7 +160,7 @@ private fun TradeableFullPageContent(
             retries++
         }
         
-        if (!bridge.isTFSInitialized()) {
+        if (!bridge.isTFSInitialized(ViewScope.FULLSCREEN)) {
             Log.w("TradeableFlutterActivity", "TFS not initialized after ${retries * TradeableFlutterActivity.INIT_RETRY_DELAY_MS}ms")
             initState = InitState.Failed("SDK initialization timeout")
             return@LaunchedEffect
@@ -170,18 +176,23 @@ private fun TradeableFullPageContent(
             delay(100) // Small delay to ensure view is fully attached
             Log.d("TradeableFlutterActivity", "View ready, sending view state")
             try {
-                val bridge = FlutterBridge.getInstance(context)
-                bridge.sendViewState(
-                    mode = mode,
-                    text = text,
-                    width = if (width > 0) width else 400.0,
-                    height = if (height > 0) height else 600.0,
-                    topicId = topicId
-                )
+                dispatchViewState(activity, context, mode, text, width, height, topicId)
                 Log.d("TradeableFlutterActivity", "View state sent successfully")
             } catch (e: Exception) {
                 Log.e("TradeableFlutterActivity", "Error sending view state", e)
             }
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, viewReady, mode, text, width, height, topicId) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && viewReady) {
+                dispatchViewState(activity, context, mode, text, width, height, topicId)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
     
@@ -227,29 +238,31 @@ private fun FlutterViewContainer(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var viewCreated by remember { mutableStateOf(false) }
+    val ownerKey = remember { "fullscreen:${UUID.randomUUID()}" }
     var flutterView by remember { mutableStateOf<io.flutter.embedding.android.FlutterView?>(null) }
     
     // Observe lifecycle events and hook close handler so Flutter back buttons finish the Activity
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(lifecycleOwner, ownerKey) {
+        val bridge = FlutterBridge.getInstance(context)
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> Log.d("FlutterViewContainer", "Lifecycle ON_RESUME")
+                Lifecycle.Event.ON_RESUME -> {
+                    Log.d("FlutterViewContainer", "Lifecycle ON_RESUME")
+                    bridge.activateOwner(ownerKey)
+                }
                 Lifecycle.Event.ON_PAUSE -> Log.d("FlutterViewContainer", "Lifecycle ON_PAUSE")
                 Lifecycle.Event.ON_DESTROY -> Log.d("FlutterViewContainer", "Lifecycle ON_DESTROY")
                 else -> {}
             }
         }
-
-        val bridge = FlutterBridge.getInstance(context)
-        bridge.setupCloseHandler { (context as? Activity)?.finish() }
+        bridge.registerCloseHandler(ownerKey) { (context as? Activity)?.finish() }
 
         lifecycleOwner.lifecycle.addObserver(observer)
 
         onDispose {
             Log.d("FlutterViewContainer", "DisposableEffect cleanup")
             lifecycleOwner.lifecycle.removeObserver(observer)
-            bridge.setupCloseHandler(null)
+            bridge.clearOwnerHandlers(ownerKey)
             flutterView?.let { view ->
                 try {
                     bridge.detachView(view)
@@ -264,11 +277,10 @@ private fun FlutterViewContainer(
         factory = { ctx ->
             Log.d("FlutterViewContainer", "Creating Flutter view")
             val bridge = FlutterBridge.getInstance(ctx)
-            val view = bridge.createFlutterView()
+            val view = bridge.createFlutterView(ViewScope.FULLSCREEN)
             view.setBackgroundColor(Color.TRANSPARENT)
             flutterView = view
             onViewCreated(view)
-            viewCreated = true
 
             // Force layout to ensure view renders
             view.post {
@@ -288,4 +300,34 @@ private sealed class InitState {
     object Initializing : InitState()
     object Ready : InitState()
     data class Failed(val error: String) : InitState()
+}
+
+private fun dispatchViewState(
+    activity: Activity?,
+    context: Context,
+    fallbackMode: String,
+    fallbackText: String,
+    fallbackWidth: Double,
+    fallbackHeight: Double,
+    fallbackTopicId: Int
+) {
+    val intent = activity?.intent
+    val mode = intent?.getStringExtra("mode") ?: fallbackMode
+    val text = intent?.getStringExtra("text") ?: fallbackText
+    val width = intent?.getDoubleExtra("width", fallbackWidth) ?: fallbackWidth
+    val height = intent?.getDoubleExtra("height", fallbackHeight) ?: fallbackHeight
+    val topicId = intent?.getIntExtra("topicId", fallbackTopicId) ?: fallbackTopicId
+    val pageId = intent?.getIntExtra("pageId", 0) ?: 0
+    val courseId = intent?.getIntExtra("courseId", 0) ?: 0
+
+    FlutterBridge.getInstance(context).sendViewState(
+        mode = mode,
+        text = text,
+        width = if (width > 0) width else 400.0,
+        height = if (height > 0) height else 600.0,
+        topicId = topicId,
+        pageId = pageId,
+        courseId = courseId,
+        scope = ViewScope.FULLSCREEN
+    )
 }

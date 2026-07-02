@@ -16,6 +16,7 @@ fun TradeableFlutterWidget(
     data: Map<String, Any> = emptyMap(),
     topicId: Int? = null,
     pageId: Int? = null,
+    courseId: Int? = null,
     onCloseSideDrawer: (() -> Unit)? = null,
     onCloseFullscreen: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -27,6 +28,7 @@ fun TradeableFlutterWidget(
         data = data,
         topicId = topicId,
         pageId = pageId,
+        courseId = courseId,
         onCloseSideDrawer = onCloseSideDrawer,
         onCloseFullscreen = onCloseFullscreen,
         modifier = modifier
@@ -140,6 +142,48 @@ fun TradeableDashboardFullscreenContent(
     TradeableFlutterView(
         mode = DisplayMode.DASHBOARD_CONTENT,
         data = mapOf("text" to "Learn Dashboard"),
+        onCloseFullscreen = onClose,
+        modifier = modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+fun TradeableCourseDetailsFullscreenContent(
+    courseId: Int,
+    modifier: Modifier = Modifier,
+    onClose: (() -> Unit)? = null
+) {
+    TradeableFlutterView(
+        mode = DisplayMode.COURSE_DETAILS_CONTENT,
+        data = mapOf("text" to "Course Details"),
+        courseId = courseId,
+        onCloseFullscreen = onClose,
+        modifier = modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+fun TradeableUserProgress(
+    modifier: Modifier = Modifier,
+    width: Dp = 320.dp,
+    height: Dp = 220.dp
+) {
+    TradeableFlutterView(
+        mode = DisplayMode.USER_PROGRESS,
+        width = width,
+        height = height,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun TradeableUserProgressFullscreenContent(
+    modifier: Modifier = Modifier,
+    onClose: (() -> Unit)? = null
+) {
+    TradeableFlutterView(
+        mode = DisplayMode.USER_PROGRESS_CONTENT,
+        data = mapOf("text" to "My Activity"),
         onCloseFullscreen = onClose,
         modifier = modifier.fillMaxWidth()
     )
