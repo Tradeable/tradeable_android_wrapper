@@ -97,10 +97,26 @@ echo ""
 # -----------------------------------------------------------------------------
 # Step 3: Get Flutter dependencies
 # -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Step 3: Get Flutter dependencies
+# -----------------------------------------------------------------------------
 echo -e "${YELLOW}[Step 3/6] Getting Flutter dependencies...${NC}"
 
 cd "$FLUTTER_MODULE_DIR"
+
+# Clear cached Git dependency to ensure latest commit is fetched
+echo "Clearing cached tradeable_learn_widget..."
+rm -rf "$HOME/.pub-cache/git/tradeable_learn_widget"* 2>/dev/null || true
+
+echo "Running flutter pub get..."
 flutter pub get
+
+echo "Upgrading tradeable_learn_widget..."
+flutter pub upgrade tradeable_learn_widget
+
+# echo "Resolved versions:"
+# flutter pub deps | grep -A5 youtube_player_flutter || true
+# flutter pub deps | grep -A5 flutter_inappwebview || true
 
 echo -e "${GREEN}✓ Dependencies installed${NC}"
 echo ""
