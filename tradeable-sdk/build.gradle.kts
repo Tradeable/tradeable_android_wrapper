@@ -34,18 +34,13 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
         buildConfig = true
     }
     
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
-    }
+    // Compose compiler is managed by org.jetbrains.kotlin.plugin.compose
+    // (do not pin kotlinCompilerExtensionVersion with Kotlin 2.x).
     
     // Include Flutter AAR when available
     sourceSets {
@@ -58,9 +53,15 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 dependencies {
-    // Kotlin
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.22")
+    // Kotlin (kept in step with the Kotlin Gradle plugin in the root build file)
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     
     // AndroidX Core

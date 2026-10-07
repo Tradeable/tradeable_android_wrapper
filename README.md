@@ -167,6 +167,23 @@ dependencies {
 > is fine. Prefer no tokens at all? Download the AAR from the Release page
 > (no login needed) and use Option B.
 
+### Compatibility requirements
+
+Starting with wrapper `v1.0.0`, the AAR is compiled with **Kotlin 2.4**. Kotlin
+metadata is forward-only: an app compiling with an older Kotlin plugin cannot
+read it. Consumers need, at build time:
+
+| Tool | Minimum |
+| ---- | ------- |
+| Kotlin Gradle Plugin | 2.4.0 |
+| Android Gradle Plugin | 8.6+ (8.10 recommended) |
+| Gradle | 8.11+ |
+| JDK | 17 |
+
+Older published AARs are unaffected — they keep working with the toolchain
+they were built with. Only upgrades to a new wrapper version pull in the new
+requirement, and it will be called out in the release notes.
+
 ### Option B — Local AAR
 
 1. Copy `tradeable-android-wrapper.aar` to your app's `libs` folder
