@@ -2,6 +2,7 @@ plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("maven-publish")
 }
 
 android {
@@ -97,5 +98,31 @@ tasks.register<Copy>("publishAAR") {
     from("build/outputs/aar/tradeable-sdk-release.aar")
     into("$rootDir/output")
     rename { "tradeable-android-wrapper.aar" }
+}
+
+// Publish wrapper AAR to GitHub Packages (Maven).
+// Version: pass -PwrapperVersion=1.2.0 (CI derives it from the git tag).
+// Credentials: -Pgpr.user=... -Pgpr.key=... or GITHUB_ACTOR/GITHUB_TOKEN env.
+afterEvaluate {
+    publishing {
+        publications {
+            create<MavenPublication>("release") {
+                groupId = "com.tradeable"
+                artifactId = "android-wrapper"
+                version = findProperty("wrapperVersion")?.toString() ?: "0.0.0-local"
+                from(components["release"])
+            }
+        }
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/Tradeable/tradeable_android_wrapper")
+                credentials {
+                    username = findProperty("gpr.user")?.toString() ?: System.getenv("GITHUB_ACTOR")
+                    password = findProperty("gpr.key")?.toString() ?: System.getenv("GITHUB_TOKEN")
+                }
+            }
+        }
+    }
 }
 

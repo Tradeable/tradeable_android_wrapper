@@ -111,7 +111,63 @@ Flutter -> Host methods:
 
 ## Installation
 
-### Local AAR
+### Option A — Maven (recommended, versioned)
+
+Each `vX.Y.Z` tag publishes the AAR to GitHub Packages and attaches it to the
+GitHub Release.
+
+**1. Create a token (one-time per developer).** GitHub → Settings → Developer
+settings → Personal access tokens → Tokens (classic) → Generate new token →
+check `read:packages` → copy the `ghp_…` value. GitHub Packages requires
+authentication even for public repos; any valid token with `read:packages` works.
+
+**2. Store it outside the repo** in `~/.gradle/gradle.properties` (never commit it):
+
+```properties
+gpr.user=your-github-username
+gpr.key=ghp_xxxx…
+```
+
+**3. Add the repository** in your `settings.gradle.kts`:
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url = uri("https://maven.pkg.github.com/Tradeable/tradeable_android_wrapper")
+            credentials {
+                username = providers.gradleProperty("gpr.user").get()
+                password = providers.gradleProperty("gpr.key").get()
+            }
+        }
+    }
+}
+```
+
+**4. Add the dependency** in your app `build.gradle.kts` and sync:
+
+```kotlin
+dependencies {
+    implementation("com.tradeable:android-wrapper:1.0.0")
+
+    // Required transitive dependencies
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation(platform("androidx.compose:compose-bom:2024.02.00"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+}
+```
+
+> CI builds need the same two values as secrets (`ORG_GRADLE_PROJECT_gpr_user`
+> / `ORG_GRADLE_PROJECT_gpr_key` map to the Gradle properties above). If sync
+> fails with `401 Unauthorized`, credentials are missing — the artifact itself
+> is fine. Prefer no tokens at all? Download the AAR from the Release page
+> (no login needed) and use Option B.
+
+### Option B — Local AAR
 
 1. Copy `tradeable-android-wrapper.aar` to your app's `libs` folder
 2. Add to your `build.gradle.kts`:
