@@ -397,6 +397,59 @@ tradeable-android-wrapper/
 
 ## Troubleshooting
 
+### Video plays audio but shows black/blank (YouTube/WebView)
+
+The video widget is a native Android `WebView` (YouTube iframe via
+`youtube_player_flutter` + `webview_flutter` hybrid composition). Audio
+playing while video stays black means the WebView loaded but its frames can't
+composite. The wrapper already handles the common causes — make sure the
+consumer app uses an AAR built from this repo **after** these fixes:
+
+- `FlutterView` is `FlutterSurfaceView`-backed (opaque, no forced
+  transparency) — `TextureView` and transparent backgrounds composite to
+  black with audio only.
+- `Theme.TradeableSDK` is opaque (translucent windows break `SurfaceView` /
+  `WebView` video compositing).
+- `GeneratedPluginRegistrant.registerWith(engine)` is called so platform-view
+  factories exist.
+- The host `Activity` is attached to the `FlutterEngine` via
+  `ActivityControlSurface` (ActivityAware plugins such as WebView
+  fullscreen/file chooser, `url_launcher` and permission flows need it), and
+  `onActivityResult` / `onRequestPermissionsResult` / `onNewIntent` /
+  `onUserLeaveHint` / `onLowMemory` are forwarded.
+- `TradeableFlutterActivity` forces `FLAG_HARDWARE_ACCELERATED` on its window.
+
+Consumer-side requirements for **embedded** `TradeableFlutterView`s:
+
+1. The host `Activity` must be hardware accelerated (the default). If the app
+   manifest sets `android:hardwareAccelerated="false"` (on `<application>` or
+   the host `<activity>`), video will be black. The wrapper logs an explicit
+   error when it detects a non-accelerated window — see below.
+2. Do not apply a translucent theme (`windowIsTranslucent=true`) to the host
+   `Activity`.
+3. All embedded views on one screen share a single engine per scope: only the
+   most recently attached view renders. Don't stack multiple video views
+   visibly at once; the wrapper logs a warning when this happens.
+
+Verify with logcat (look for these lines, all present = wiring healthy):
+
+```bash
+adb logcat | grep -E "FlutterBridge|TradeableFlutterActivity"
+# [EMBEDDED] Attached activity MainActivity
+# [FULLSCREEN] Attached activity TradeableFlutterActivity
+# [FULLSCREEN] FlutterView attached, hardwareAccelerated=true
+# Hardware acceleration flag active=true
+```
+
+If you instead see
+`Host window is NOT hardware accelerated ... video will be BLACK with audio
+only`, fix the consumer manifest. If you see
+`PlatformViewsController can only be attached to a single output target`,
+you are on an AAR older than the activity-attach fix — rebuild from
+`./output/tradeable-android-wrapper.aar` and re-copy it into the consumer
+app's `libs/` folder (stale AAR copies are the most common reason the fix
+"doesn't work").
+
 ### SDK not initializing
 
 Make sure you're calling `TradeableSDK.initialize()` in your Application's `onCreate()`.

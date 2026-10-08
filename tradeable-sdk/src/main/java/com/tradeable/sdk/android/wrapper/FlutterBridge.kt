@@ -2,12 +2,17 @@ package com.tradeable.sdk.android.wrapper
 
 import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
 import android.util.Log
-import io.flutter.embedding.android.FlutterTextureView
+import androidx.lifecycle.LifecycleOwner
+import io.flutter.embedding.android.FlutterSurfaceView
 import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor
+import io.flutter.embedding.android.ExclusiveAppComponent
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugins.GeneratedPluginRegistrant
 
 /**
  * FlutterBridge - Manages Flutter integration for Android Mirrors iOS FlutterBridge implementation
@@ -57,6 +62,14 @@ class FlutterBridge private constructor(private val context: Context) {
                     ViewScope.FULLSCREEN to mutableListOf<FlutterView>()
             )
 
+    // Activity attached per engine scope. Plugins that render video
+    // (WebView / YouTube iframe, url_launcher, fullscreen handlers) are
+    // ActivityAware: without attachToActivity they never receive an Activity
+    // and video surfaces stay blank while audio keeps playing.
+    private val attachedActivityByScope = mutableMapOf<ViewScope, Activity?>()
+    private val activityRefCount =
+            mutableMapOf<ViewScope, MutableMap<Activity, Int>>()
+
     val authHandler = AuthHandler()
     val navigationHandler = NavigationHandler()
 
@@ -82,6 +95,24 @@ class FlutterBridge private constructor(private val context: Context) {
         }
 
         val engine = FlutterEngine(context)
+        // Register Flutter-module plugins (WebView, url_launcher, ...).
+        // Without this, PlatformView factories stay unregistered and
+        // flutter/platform_views create fails -> WebView surface stays blank
+        // (audio plays, video white).
+        try {
+            GeneratedPluginRegistrant.registerWith(engine)
+        } catch (e: Exception) {
+            Log.e(TAG, "[$scope] Plugin registration failed", e)
+        }
+        // NOTE: do NOT call PlatformViewsController.attach() manually here.
+        // The engine's ActivityControlSurface (attachToActivity, wired via
+        // attachActivity()) owns that step through
+        // FlutterEngineConnectionRegistry. A manual attach binds the
+        // controller to the application context and any later
+        // attachToActivity crashes with "PlatformViewsController can only be
+        // attached to a single output target" - while also leaving
+        // ActivityAware plugins (WebView video/fullscreen) without an
+        // Activity, which is exactly the black-video-with-audio symptom.
         engine.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
 
         val baseChannel = MethodChannel(engine.dartExecutor.binaryMessenger, BASE_CHANNEL)
@@ -130,22 +161,171 @@ class FlutterBridge private constructor(private val context: Context) {
         return bundle
     }
 
-    fun createFlutterView(scope: ViewScope = ViewScope.EMBEDDED): FlutterView {
+    fun createFlutterView(scope: ViewScope = ViewScope.EMBEDDED): FlutterView =
+            createFlutterView(context, scope)
+
+    fun createFlutterView(hostContext: Context, scope: ViewScope = ViewScope.EMBEDDED): FlutterView {
         val bundle = ensureEngine(scope)
 
         // Ensure engine is in resumed state before creating view
         bundle.engine.lifecycleChannel.appIsResumed()
         Log.d(TAG, "Engine lifecycle set to resumed before view creation")
 
-        // Use TextureView-backed FlutterView for better behavior inside Compose scroll/lazy
-        // containers.
-        return FlutterView(context, FlutterTextureView(context)).apply {
+        // Build the view with the host Activity context (not the application
+        // context): SurfaceView window attachment, theming and plugin flows
+        // (WebView fullscreen/file chooser) all resolve against this context.
+        val viewContext = hostContext.findActivity() ?: hostContext
+
+        // Use SurfaceView-backed FlutterView. Required for WebView/YouTube
+        // video frames (TextureView composites to a black screen with audio only).
+        return FlutterView(viewContext, FlutterSurfaceView(viewContext)).apply {
             attachToFlutterEngine(bundle.engine)
-            flutterViewsByScope.getValue(scope).add(this)
+            val views = flutterViewsByScope.getValue(scope)
+            views.add(this)
+            if (views.size > 1) {
+                Log.w(
+                        TAG,
+                        "[$scope] ${views.size} FlutterViews share one engine: " +
+                                "only the most recently attached view renders; older views " +
+                                "freeze (audio may continue while their video is blank/frozen)."
+                )
+            }
+            post {
+                Log.d(TAG, "[$scope] FlutterView attached, hardwareAccelerated=$isHardwareAccelerated")
+                if (!isHardwareAccelerated) {
+                    Log.e(
+                            TAG,
+                            "[$scope] Host window is NOT hardware accelerated: WebView/YouTube " +
+                                    "video will be BLACK with audio only. Enable " +
+                                    "android:hardwareAccelerated=\"true\" on the host Activity."
+                    )
+                }
+            }
             Log.d(
                     TAG,
-                    "Created $scope Flutter view. Total views: ${flutterViewsByScope.getValue(scope).size}"
+                    "Created $scope Flutter view. Total views: ${views.size}"
             )
+        }
+    }
+
+    /**
+     * Attach a host Activity to the engine(s) so ActivityAware plugins
+     * (WebView video/fullscreen, url_launcher, permissions, ...) function.
+     * Reference-counted per scope: call [detachActivity] when the host is gone.
+     */
+    @Synchronized
+    fun attachActivity(activity: Activity, scope: ViewScope? = null) {
+        val scopes = scope?.let { listOf(it) } ?: ViewScope.values().toList()
+        scopes.forEach { s ->
+            val counts = activityRefCount.getOrPut(s) { mutableMapOf() }
+            counts[activity] = (counts[activity] ?: 0) + 1
+            if (attachedActivityByScope[s] === activity) return@forEach
+            attachedActivityByScope[s]?.let { detachScopeFromActivity(s) }
+            attachScopeToActivity(s, activity)
+        }
+    }
+
+    @Synchronized
+    fun detachActivity(activity: Activity, scope: ViewScope? = null) {
+        val scopes = scope?.let { listOf(it) } ?: ViewScope.values().toList()
+        scopes.forEach { s ->
+            val counts = activityRefCount[s] ?: return@forEach
+            val left = (counts[activity] ?: 0) - 1
+            if (left <= 0) counts.remove(activity) else counts[activity] = left
+            if (attachedActivityByScope[s] === activity) {
+                detachScopeFromActivity(s)
+                // Another host still holds this scope (e.g. embedded views
+                // under a finished fullscreen Activity): hand it over.
+                counts.keys.firstOrNull()?.let { next -> attachScopeToActivity(s, next) }
+            }
+        }
+    }
+
+    private fun attachScopeToActivity(scope: ViewScope, activity: Activity) {
+        val bundle = ensureEngine(scope)
+        val lifecycle = (activity as? LifecycleOwner)?.lifecycle
+        if (lifecycle == null) {
+            Log.w(TAG, "[$scope] Cannot attach ${activity.localClassName}: not a LifecycleOwner")
+            return
+        }
+        try {
+            val component = object : ExclusiveAppComponent<Activity> {
+                override fun getAppComponent(): Activity = activity
+                override fun detachFromFlutterEngine() {
+                    // No-op: lifecycle-driven detach is handled via detachActivity().
+                }
+            }
+            bundle.engine.activityControlSurface.attachToActivity(component, lifecycle)
+            attachedActivityByScope[scope] = activity
+            Log.d(TAG, "[$scope] Attached activity ${activity.localClassName}")
+        } catch (t: Throwable) {
+            // Best-effort wiring: never crash the host app over plugin setup.
+            Log.e(TAG, "[$scope] attachToActivity failed", t)
+        }
+    }
+
+    private fun detachScopeFromActivity(scope: ViewScope) {
+        try {
+            engineBundles[scope]?.engine?.activityControlSurface?.detachFromActivity()
+        } catch (t: Throwable) {
+            Log.e(TAG, "[$scope] detachFromActivity failed", t)
+        }
+        attachedActivityByScope[scope] = null
+        Log.d(TAG, "[$scope] Detached activity")
+    }
+
+    /** Forward host-Activity plugin callbacks to every engine. */
+    fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
+        var handled = false
+        engineBundles.values.forEach { bundle ->
+            try {
+                handled = bundle.engine.activityControlSurface.onActivityResult(requestCode, resultCode, data) || handled
+            } catch (e: Exception) {
+                Log.e(TAG, "onActivityResult forward failed", e)
+            }
+        }
+        return handled
+    }
+
+    fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray): Boolean {
+        var handled = false
+        engineBundles.values.forEach { bundle ->
+            try {
+                handled = bundle.engine.activityControlSurface.onRequestPermissionsResult(requestCode, permissions, grantResults) || handled
+            } catch (e: Exception) {
+                Log.e(TAG, "onRequestPermissionsResult forward failed", e)
+            }
+        }
+        return handled
+    }
+
+    fun onNewIntent(intent: Intent) {
+        engineBundles.values.forEach { bundle ->
+            try {
+                bundle.engine.activityControlSurface.onNewIntent(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "onNewIntent forward failed", e)
+            }
+        }
+    }
+
+    fun onUserLeaveHint() {
+        engineBundles.values.forEach { bundle ->
+            try {
+                bundle.engine.activityControlSurface.onUserLeaveHint()
+            } catch (e: Exception) {
+                Log.e(TAG, "onUserLeaveHint forward failed", e)
+            }
+        }
+    }
+
+    fun onLowMemory() {
+        engineBundles.values.forEach { bundle ->
+            try {
+                bundle.engine.dartExecutor.notifyLowMemoryWarning()
+            } catch (e: Exception) {
+                Log.e(TAG, "onLowMemory forward failed", e)
+            }
         }
     }
 
@@ -387,4 +567,14 @@ class FlutterBridge private constructor(private val context: Context) {
     fun updateNavigationState(screenData: Map<String, Any>) {
         navigationHandler.updateState(screenData)
     }
+}
+
+/** Walk Context wrappers (Compose, themed, ...) to find the host Activity. */
+internal fun Context.findActivity(): Activity? {
+    var ctx: Context? = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
 }

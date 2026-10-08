@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.graphics.Color
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -57,6 +58,21 @@ class TradeableFlutterActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // WebView/YouTube video frames cannot composite without hardware
+        // acceleration (result: black video with audio). The manifest already
+        // declares it, but enforce it programmatically in case the consumer
+        // app overrides the attribute during manifest merging.
+        window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
+        val hwFlags = window.attributes.flags and WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+        Log.d(TAG, "Hardware acceleration flag active=${
+            hwFlags != 0
+        }")
+
+        // Give ActivityAware plugins (WebView video/fullscreen, url_launcher,
+        // permissions) a host Activity. Manual add-to-app embeddings must do
+        // this themselves; FlutterActivity normally does it via its delegate.
+        FlutterBridge.getInstance(this).attachActivity(this)
         
         // Extract intent extras (matching iOS pattern)
         val mode = intent.getStringExtra("mode") ?: "fullscreen"
@@ -85,7 +101,36 @@ class TradeableFlutterActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        FlutterBridge.getInstance(this).onNewIntent(intent)
         Log.d(TAG, "onNewIntent - updated fullscreen payload")
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        val bridge = FlutterBridge.getInstance(this)
+        if (!bridge.onActivityResult(requestCode, resultCode, data)) {
+            super.onActivityResult(requestCode, resultCode, data)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        val bridge = FlutterBridge.getInstance(this)
+        if (!bridge.onRequestPermissionsResult(requestCode, permissions, grantResults)) {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        FlutterBridge.getInstance(this).onUserLeaveHint()
+        super.onUserLeaveHint()
+    }
+
+    override fun onLowMemory() {
+        FlutterBridge.getInstance(this).onLowMemory()
+        super.onLowMemory()
     }
     
     override fun onDestroy() {
@@ -98,6 +143,11 @@ class TradeableFlutterActivity : ComponentActivity() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error detaching Flutter view", e)
             }
+        }
+        try {
+            FlutterBridge.getInstance(this).detachActivity(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error detaching activity", e)
         }
         super.onDestroy()
     }
@@ -277,8 +327,13 @@ private fun FlutterViewContainer(
         factory = { ctx ->
             Log.d("FlutterViewContainer", "Creating Flutter view")
             val bridge = FlutterBridge.getInstance(ctx)
-            val view = bridge.createFlutterView(ViewScope.FULLSCREEN)
-            view.setBackgroundColor(Color.TRANSPARENT)
+            // Pass the host Activity context (not application): SurfaceView
+            // window attachment and plugin flows resolve against it.
+            // Activity attach itself is handled in onCreate/onDestroy.
+            val view = bridge.createFlutterView(ctx, ViewScope.FULLSCREEN)
+            // Do NOT force a transparent background: SurfaceView-backed
+            // FlutterView + WebView (YouTube) renders white/blank with audio
+            // only when transparency is forced. Opaque default matches pure Flutter.
             flutterView = view
             onViewCreated(view)
 

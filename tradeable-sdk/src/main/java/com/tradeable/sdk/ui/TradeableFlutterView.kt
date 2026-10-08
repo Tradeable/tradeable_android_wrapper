@@ -53,7 +53,8 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.tradeable.sdk.android.wrapper.FlutterBridge
-import android.graphics.Color as AndroidColor
+import com.tradeable.sdk.android.wrapper.FlutterBridge.ViewScope
+import com.tradeable.sdk.android.wrapper.findActivity
 import android.view.ViewGroup
 import com.tradeable.sdk.config.TradeableCallbackEvent
 import com.tradeable.sdk.core.TradeableSDK
@@ -627,6 +628,10 @@ private fun FlutterContainer(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val ownerKey = remember { "embedded:${UUID.randomUUID()}" }
+    // Host Activity for engine attachment: ActivityAware plugins (WebView
+    // video/fullscreen, url_launcher) need it; without it video surfaces can
+    // stay blank while audio plays.
+    val hostActivity = remember(context) { context.findActivity() }
     var flutterView by remember { mutableStateOf<io.flutter.embedding.android.FlutterView?>(null) }
     var isReady by remember { mutableStateOf(false) }
     
@@ -648,7 +653,7 @@ private fun FlutterContainer(
     }
     
     // Setup close handler and cleanup
-    DisposableEffect(lifecycleOwner, ownerKey, onClose, onCloseSideDrawer) {
+    DisposableEffect(lifecycleOwner, ownerKey, hostActivity, onClose, onCloseSideDrawer) {
         val bridge = FlutterBridge.getInstance(context)
         if (onClose != null) {
             bridge.registerCloseHandler(ownerKey, onClose)
@@ -656,6 +661,10 @@ private fun FlutterContainer(
         if (onCloseSideDrawer != null) {
             bridge.registerSideDrawerCloseHandler(ownerKey, onCloseSideDrawer)
         }
+        // Attach the consumer host Activity to the embedded engine so
+        // ActivityAware plugins (WebView video/fullscreen) work. Refcounted:
+        // multiple views in one Activity attach/detach symmetrically.
+        hostActivity?.let { bridge.attachActivity(it, ViewScope.EMBEDDED) }
 
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -678,6 +687,7 @@ private fun FlutterContainer(
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             bridge.clearOwnerHandlers(ownerKey)
+            hostActivity?.let { bridge.detachActivity(it, ViewScope.EMBEDDED) }
             flutterView?.let { view ->
                 bridge.detachView(view)
             }
@@ -689,8 +699,11 @@ private fun FlutterContainer(
     AndroidView(
         factory = { ctx ->
             val bridge = FlutterBridge.getInstance(ctx)
-            val view = bridge.createFlutterView()
-            view.setBackgroundColor(AndroidColor.TRANSPARENT)
+            // Pass the Compose host context: the bridge resolves the Activity
+            // from it for view creation (SurfaceView window attachment).
+            val view = bridge.createFlutterView(ctx, ViewScope.EMBEDDED)
+            // Do NOT force transparency here either (see Activity): it breaks
+            // WebView video pixels on SurfaceView-backed FlutterView.
             view.layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
