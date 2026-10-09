@@ -5,6 +5,10 @@ plugins {
     id("maven-publish")
 }
 
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+
 android {
     namespace = "com.tradeable.sdk"
     compileSdk = 34
@@ -101,9 +105,14 @@ tasks.register<Copy>("publishAAR") {
     rename { "tradeable-android-wrapper.aar" }
 }
 
-// Publish wrapper AAR to GitHub Packages (Maven).
-// Version: pass -PwrapperVersion=1.2.0 (CI derives it from the git tag).
-// Credentials: -Pgpr.user=... -Pgpr.key=... or GITHUB_ACTOR/GITHUB_TOKEN env.
+// Publish the SLIM AAR to GitHub Packages (Maven) — and only the slim.
+// Rationale: the thin component build's POM points at the Flutter module
+// Maven repo, which exists solely on the build machine, so Maven consumers
+// could never resolve it. The slim AAR is self-contained (wrapper + engine +
+// Dart + plugins); its POM therefore declares only public, anonymously
+// resolvable libraries. Consumers need just:
+//     implementation("com.tradeable:android-wrapper:<version>")
+// plus a Compose host app. Same coordinates as before, working content.
 afterEvaluate {
     publishing {
         publications {
@@ -111,7 +120,37 @@ afterEvaluate {
                 groupId = "com.tradeable"
                 artifactId = "android-wrapper"
                 version = findProperty("wrapperVersion")?.toString() ?: "0.0.0-local"
-                from(components["release"])
+                artifact(rootDir.resolve("output/tradeable-android-wrapper-slim.aar")) {
+                    extension = "aar"
+                }
+                pom {
+                    name.set("Tradeable Android Wrapper (slim, self-contained)")
+                    description.set(
+                        "Tradeable Flutter SDK wrapper for native Android. " +
+                            "Self-contained: Flutter engine, Dart code and plugins are bundled, " +
+                            "no extra Flutter lines/repos needed."
+                    )
+                    withXml {
+                        val dependencies = asNode().appendNode("dependencies")
+                        fun dep(group: String, name: String, version: String) {
+                            val node = dependencies.appendNode("dependency")
+                            node.appendNode("groupId", group)
+                            node.appendNode("artifactId", name)
+                            node.appendNode("version", version)
+                            node.appendNode("scope", "runtime")
+                        }
+                        dep("org.jetbrains.kotlinx", "kotlinx-coroutines-android", "1.7.3")
+                        dep("androidx.core", "core-ktx", "1.12.0")
+                        dep("androidx.appcompat", "appcompat", "1.6.1")
+                        dep("androidx.lifecycle", "lifecycle-runtime-ktx", "2.7.0")
+                        dep("androidx.lifecycle", "lifecycle-viewmodel-compose", "2.7.0")
+                        dep("androidx.activity", "activity-compose", "1.8.2")
+                        dep("androidx.compose.ui", "ui", "1.6.1")
+                        dep("androidx.compose.ui", "ui-graphics", "1.6.1")
+                        dep("androidx.compose.foundation", "foundation", "1.6.1")
+                        dep("androidx.compose.material3", "material3", "1.2.0")
+                    }
+                }
             }
         }
         repositories {
@@ -124,6 +163,44 @@ afterEvaluate {
                 }
             }
         }
+    }
+}
+
+// The slim AAR is produced by assembleFatAar, not by the standard build —
+// make sure publishing can never upload a stale/missing file.
+tasks.matching { it.name == "publishReleasePublicationToGitHubPackagesRepository" }.configureEach {
+    dependsOn("assembleFatAar")
+}
+
+tasks.register("assembleFatAar") {
+    dependsOn("assembleRelease")
+    group = "build"
+    description = "Merges wrapper + Flutter release artifacts into self-contained fat and slim AARs. " +
+        "Slim drops androidx.browser/webkit/relinker for consumers whose own app already ships them."
+    doLast {
+        val wrapperAar = layout.buildDirectory.get().asFile.resolve("outputs/aar/tradeable-sdk-release.aar")
+        com.tradeable.fatpack.FatAar.assemble(
+            project,
+            wrapperAar,
+            rootDir.resolve("output/tradeable-android-wrapper-fat.aar"),
+            flavor = "fat"
+        )
+        com.tradeable.fatpack.FatAar.assemble(
+            project,
+            wrapperAar,
+            rootDir.resolve("output/tradeable-android-wrapper-slim.aar"),
+            flavor = "slim",
+            // Slim drops the libs a consumer provably already ships
+            // (proven by `Duplicate class` build errors): their own
+            // copies satisfy both sides. Confirmed colliding set:
+            // androidx.browser (Custom Tabs), androidx.webkit (WebView
+            // compat), relinker (native lib loader).
+            excludeModules = setOf(
+                "androidx.browser:browser",
+                "androidx.webkit:webkit",
+                "com.getkeepsafe.relinker:relinker"
+            )
+        )
     }
 }
 

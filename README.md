@@ -114,7 +114,10 @@ Flutter -> Host methods:
 ### Option A — Maven (recommended, versioned)
 
 Each `vX.Y.Z` tag publishes the AAR to GitHub Packages and attaches it to the
-GitHub Release.
+GitHub Release. **The Maven artifact is the self-contained slim AAR**
+(wrapper + Flutter engine + Dart + plugins, minus browser/webkit/relinker
+which most apps already ship): one coordinate, no Flutter lines, no extra
+repositories beyond the Packages entry below.
 
 **1. Create a token (one-time per developer).** GitHub → Settings → Developer
 settings → Personal access tokens → Tokens (classic) → Generate new token →
@@ -151,13 +154,9 @@ dependencyResolutionManagement {
 ```kotlin
 dependencies {
     implementation("com.tradeable:android-wrapper:1.0.0")
-
-    // Required transitive dependencies
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation(platform("androidx.compose:compose-bom:2024.02.00"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.material3:material3")
+    // That's the only Tradeable line: the POM carries the standard public
+    // deps (coroutines/lifecycle/compose/appcompat) transitively. No
+    // flutter_release line, no Flutter repositories, no other setup.
 }
 ```
 
@@ -184,16 +183,22 @@ Older published AARs are unaffected — they keep working with the toolchain
 they were built with. Only upgrades to a new wrapper version pull in the new
 requirement, and it will be called out in the release notes.
 
-### Option B — Local AAR
+### Option B — Local AAR drop-in (no token, no extra repositories)
 
-1. Copy `tradeable-android-wrapper.aar` to your app's `libs` folder
+For consumers that cannot add dependency/repository lines, use the
+**fat AAR** — it bundles the wrapper, the Flutter engine, the compiled Dart
+code and the WebView/url_launcher plugins, so this single line is the only
+Tradeable declaration needed:
+
+1. Download `tradeable-android-wrapper-fat.aar` from the GitHub Release page
+   (no login needed) into your app's `libs` folder
 2. Add to your `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation(files("libs/tradeable-android-wrapper.aar"))
-    
-    // Required transitive dependencies
+    implementation(files("libs/tradeable-android-wrapper-fat.aar"))
+
+    // Required standard dependencies (public Maven, no tokens)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation(platform("androidx.compose:compose-bom:2024.02.00"))
@@ -201,6 +206,27 @@ dependencies {
     implementation("androidx.compose.material3:material3")
 }
 ```
+
+No `flutter_release` line, no custom Maven repositories, no GitHub token.
+Your app needs `compileSdk 36` (enforced by the AAR metadata) and Internet
+access for content. To verify you have fresh binaries, see
+“Video plays audio but shows black/blank” below.
+
+**Seeing `Duplicate class ...` at build time?** Your app already ships one of
+our bundled support libs (observed in the wild: `androidx.browser`,
+`androidx.webkit`, `relinker`). Swap in
+`tradeable-android-wrapper-slim.aar` instead — identical, minus `browser`,
+`webkit` and `relinker` (your copies cover both sides; versions just need to
+be compatible, e.g. their browser 1.10.0 vs our 1.8.0 only adds APIs).
+Nothing else changes. If the duplicate names a *different* module, tell us
+which one and we'll cut a matching slim for it.
+
+### Option C — Thin local AAR (advanced)
+
+`output/tradeable-android-wrapper.aar` contains only the wrapper classes. Use
+it only if you also wire the Flutter half yourself (`flutter_release` +
+engine artifacts, e.g. via the `tradeable-sdk/libs` Maven layout). Most
+consumers should prefer Option A or B.
 
 ## Quick Start
 

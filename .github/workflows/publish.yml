@@ -48,4 +48,6 @@ jobs:
         with:
           files: |
             output/tradeable-android-wrapper.aar
+            output/tradeable-android-wrapper-fat.aar
+            output/tradeable-android-wrapper-slim.aar
             output/version.txt

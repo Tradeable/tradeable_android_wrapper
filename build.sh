@@ -182,14 +182,17 @@ echo -e "${YELLOW}[Step 6/6] Building Tradeable Android Wrapper AAR...${NC}"
 
 cd "$SCRIPT_DIR"
 
-# Build the Android wrapper
-./gradlew clean assembleRelease
+# Build the Android wrapper: thin AAR + self-contained fat/slim AARs
+# (a single assembleFatAar call builds both flavors)
+./gradlew clean assembleRelease assembleFatAar
 
 # Create output directory
 mkdir -p "$OUTPUT_DIR"
 
-# Copy the final AAR
+# Copy the final AARs (the fat/slim AARs are written to $OUTPUT_DIR directly by
+# the assembleFatAar task)
 cp "tradeable-sdk/build/outputs/aar/tradeable-sdk-release.aar" "$OUTPUT_DIR/tradeable-android-wrapper.aar"
+ls -la "$OUTPUT_DIR/"
 
 # Create version info file
 cat > "$OUTPUT_DIR/version.txt" << EOF
@@ -206,6 +209,8 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Build Output:${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo "AAR Location: $OUTPUT_DIR/tradeable-android-wrapper.aar"
+echo "Fat AAR Location: $OUTPUT_DIR/tradeable-android-wrapper-fat.aar (self-contained, for libs/ drop-in)"
+echo "Slim AAR Location: $OUTPUT_DIR/tradeable-android-wrapper-slim.aar (self-contained minus browser/webkit/relinker)"
 echo "Version Info: $OUTPUT_DIR/version.txt"
 echo ""
 
