@@ -182,12 +182,13 @@ echo -e "${YELLOW}[Step 6/6] Building Tradeable Android Wrapper AAR...${NC}"
 
 cd "$SCRIPT_DIR"
 
+# Create output directory BEFORE Gradle: assembleFatAar writes the fat/slim
+# AARs straight into it (on fresh checkouts it doesn't exist yet).
+mkdir -p "$OUTPUT_DIR"
+
 # Build the Android wrapper: thin AAR + self-contained fat/slim AARs
 # (a single assembleFatAar call builds both flavors)
 ./gradlew clean assembleRelease assembleFatAar
-
-# Create output directory
-mkdir -p "$OUTPUT_DIR"
 
 # Copy the final AARs (the fat/slim AARs are written to $OUTPUT_DIR directly by
 # the assembleFatAar task)

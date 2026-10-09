@@ -203,9 +203,11 @@ object FatAar {
         writeMetadata(staged, fat)
         writeBuildInfo(project, fat, flavor, excludeModules, ordered)
 
+        // Ensure the destination exists: on CI/fresh checkouts nothing has
+        // created output/ yet (build.sh mkdir runs after Gradle).
+        outFile.parentFile?.mkdirs()
         zipTreeToJar(fat, outFile)
-        project.logger.lifecycle("Fat AAR written to $outFile (${outFile.length()} bytes, $duplicates duplicates skipped)")
-    }
+        project.logger.lifecycle("Fat AAR written to $outFile (${outFile.length()} bytes, $duplicates duplicates skipped)")    }
 
     private fun rank(a: Input) = when {
         a.name.endsWith(":flutter_release") -> 0
